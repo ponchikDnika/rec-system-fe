@@ -1,25 +1,31 @@
-import logo from './logo.svg';
-import './App.css';
+// import React from 'react';
+// import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+// import Signup from './components/Signup';
+// import Login from './components/Login';
+// import Profile from './components/Profile';
+// import Posts from './components/Posts';
+// import CreatePost from './components/CreatePost';
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
-}
+// function App() {
+//     return (
+//         <Router>
+//             <nav>
+//                 <Link to="/signup">Signup</Link> | 
+//                 <Link to="/login">Login</Link> | 
+//                 <Link to="/profile">Profile</Link> |
+//                 <Link to="/posts">Posts</Link> |
+//                 <Link to="/create-post">Create Post</Link>
+//             </nav>
 
-export default App;
+//             <Routes>
+//                 <Route path="/signup" element={<Signup />} />
+//                 <Route path="/login" element={<Login />} />
+//                 <Route path="/profile" element={<Profile />} />
+//                 <Route path="/posts" element={<Posts />} />
+//                 <Route path="/create-post" element={<CreatePost />} />
+//             </Routes>
+//         </Router>
+//     );
+// }
+
+// export default App;
