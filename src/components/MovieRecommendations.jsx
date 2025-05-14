@@ -1,10 +1,12 @@
 // src/components/MovieRecommendations.js
-import React, { useEffect, useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     fetchRandomMovies,
     fetchMoviesByTag,
     fetchSimilarMovies,
-    fetchMovieDetails, fetchMoviesByGenre
+    fetchMovieDetails,
+    fetchMoviesByGenre,
+    searchMoviesByTitle
 } from '../services/api';
 
 export default function MovieRecommendations() {
@@ -15,96 +17,122 @@ export default function MovieRecommendations() {
 
     // pagination state
     const [page, setPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(1);
-    const size = 12;
+    const [hasNext, setHasNext] = useState(false);
+    const limit = 9;
 
-    // remember what we’re loading for pagination
-    const [mode, setMode] = useState('random');   // 'random' | 'tag' | 'similar' | 'genre'
-    const [param, setParam] = useState(null);     // tag string or movieId
+    const [searchStr, setSearchStr] = useState('');
 
-    // loader helpers
-    const loadRandom = p => {
-        setMode('random'); setParam(null);
-        fetchRandomMovies(p, size)
+    // remember current load mode & param
+    const [mode, setMode] = useState('random'); // 'random' | 'tag' | 'similar' | 'genre'
+    const [param, setParam] = useState(null);
+
+    // core loader
+    const runLoad = (loader, p, ...args) => {
+        loader(...args, p, limit)
             .then(res => {
-                const { data, currentPage, totalPages } = res.data;
+                console.log(res);
+                const {data} = res.data;       // assume API returns { data: [...], ... }
+                console.log(data);
                 setMovies(data);
-                setPage(currentPage);
-                setTotalPages(totalPages);
-                setSelectedMovie(null);
+                setPage(p);
+                setHasNext(data.length === limit);
+                setSelectedMovie(loader === fetchSimilarMovies ? res.data.details : null);
                 setInfoMessage(null);
+                setError(null);
             })
             .catch(() => setError('Failed to fetch movies.'));
     };
 
+    const loadRandom = p => {
+        setMode('random');
+        setParam(null);
+        runLoad(fetchRandomMovies, p);
+    };
     const loadByTag = (tag, p) => {
-        setMode('tag'); setParam(tag);
-        fetchMoviesByTag(tag, p, size)
-            .then(res => {
-                const { data, currentPage, totalPages } = res.data;
-                setMovies(data);
-                setPage(currentPage);
-                setTotalPages(totalPages);
-                setSelectedMovie(null);
-                setInfoMessage(null);
-            })
-            .catch(() => setError(`Failed to fetch movies with tag: ${tag}`));
+        setMode('tag');
+        setParam(tag);
+        runLoad(fetchMoviesByTag, p, tag);
     };
-
-    const loadByGenre = (tag, p) => {
-        setMode('genre'); setParam(tag);
-        fetchMoviesByGenre(tag, p, size)
-            .then(res => {
-                const { data, currentPage, totalPages } = res.data;
-                setMovies(data);
-                setPage(currentPage);
-                setTotalPages(totalPages);
-                setSelectedMovie(null);
-                setInfoMessage(null);
-            })
-            .catch(() => setError(`Failed to fetch movies with tag: ${tag}`));
+    const loadByGenre = (genre, p) => {
+        setMode('genre');
+        setParam(genre);
+        runLoad(fetchMoviesByGenre, p, genre);
     };
-
-    const loadSimilar = (movieId, p) => {
-        setMode('similar'); setParam(movieId);
+    const loadSimilar = (id, p) => {
+        setMode('similar');
+        setParam(id);
+        // special: we need details + similar list
         Promise.all([
-            fetchMovieDetails(movieId),
-            fetchSimilarMovies(movieId, p, size)
+            fetchMovieDetails(id),
+            fetchSimilarMovies(id, p, limit),
         ])
-            .then(([detailsRes, similarRes]) => {
-                setSelectedMovie(detailsRes.data);
-                const { data, currentPage, totalPages } = similarRes.data;
-                if (data.length) {
-                    setMovies(data);
-                    setPage(currentPage);
-                    setTotalPages(totalPages);
-                    setInfoMessage(null);
-                } else {
-                    setInfoMessage("No similar movies found. Here's some random ones:");
-                    loadRandom(1);
-                }
+            .then(([detRes, simRes]) => {
+                const details = detRes.data;
+                const data = simRes.data.data;
+                setSelectedMovie(details);
+                setMovies(data);
+                setPage(p);
+                setHasNext(data.length === limit);
+                setInfoMessage(data.length === 0
+                    ? "No similar movies found. Showing random."
+                    : null
+                );
+                if (data.length === 0) loadRandom(1);
+                setError(null);
             })
             .catch(() => setError("Failed to load movie or recommendations."));
     };
 
-    // initial load
+    const loadBySearch = (str, p) => {
+        setMode('search');
+        setParam(str);
+        runLoad(searchMoviesByTitle, p, str);
+    };
+
+    // initial
     useEffect(() => loadRandom(1), []);
 
     const handleTagClick = tag => loadByTag(tag, 1);
     const handleGenreClick = genre => loadByGenre(genre, 1);
     const handleMovieClick = id => loadSimilar(id, 1);
+    const handleSearch = () => loadBySearch(searchStr, 1);
 
-    const handlePageChange = newPage => {
-        if (newPage < 1 || newPage > totalPages) return;
-        if (mode === 'random') loadRandom(newPage);
-        else if (mode === 'tag') loadByTag(param, newPage);
-        else if (mode === 'similar') loadSimilar(param, newPage);
-        else if (mode === 'genre') loadByGenre(param, newPage);
+    const handlePrev = () => {
+        if (page === 1) return;
+        const np = page - 1;
+        if (mode === 'random') loadRandom(np);
+        if (mode === 'tag') loadByTag(param, np);
+        if (mode === 'genre') loadByGenre(param, np);
+        if (mode === 'similar') loadSimilar(param, np);
+    };
+    const handleNext = () => {
+        if (!hasNext) return;
+        const np = page + 1;
+        if (mode === 'random') loadRandom(np);
+        if (mode === 'tag') loadByTag(param, np);
+        if (mode === 'genre') loadByGenre(param, np);
+        if (mode === 'similar') loadSimilar(param, np);
     };
 
     return (
         <div className="container py-4">
-            <h1 className="display-6 text-center mb-4">Movie Recommendations</h1>
+            <h1 className="display-6 text-center mb-xl-6">Movies Recommendations System</h1>
+
+            {/* ── Search Panel ────────────────────────────────────────────── */}
+            <div className="input-group mb-4">
+                <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Search by title..."
+                    value={searchStr}
+                    onChange={e => setSearchStr(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                />
+                <button className="btn btn-primary" onClick={handleSearch}>
+                    Search
+                </button>
+            </div>
+
             {error && <div className="alert alert-danger text-center">{error}</div>}
             {infoMessage && <div className="alert alert-warning text-center">{infoMessage}</div>}
 
@@ -120,7 +148,7 @@ export default function MovieRecommendations() {
                                     key={i}
                                     onClick={() => handleGenreClick(g)}
                                     className="badge bg-info text-dark me-1"
-                                    style={{ cursor: 'pointer' }}
+                                    style={{cursor: 'pointer'}}
                                 >
                   {g}
                 </span>
@@ -157,7 +185,7 @@ export default function MovieRecommendations() {
                                         key={i}
                                         onClick={() => handleTagClick(t)}
                                         className="badge bg-success me-1"
-                                        style={{ cursor: 'pointer' }}
+                                        style={{cursor: 'pointer'}}
                                     >
                     {t}
                   </span>
@@ -179,7 +207,7 @@ export default function MovieRecommendations() {
                                 <h5
                                     onClick={() => handleMovieClick(movie.movieId)}
                                     className="card-title text-primary mb-0"
-                                    style={{ cursor: 'pointer' }}
+                                    style={{cursor: 'pointer'}}
                                 >
                                     {movie.title}
                                 </h5>
@@ -192,39 +220,34 @@ export default function MovieRecommendations() {
                                             key={i}
                                             onClick={() => handleGenreClick(g)}
                                             className="badge bg-info text-dark me-1"
-                                            style={{ cursor: 'pointer' }}
+                                            style={{cursor: 'pointer'}}
                                         >
                       {g}
                     </span>
                                     ))}
                                 </p>
-                                <p className="card-text"><strong>Links:</strong></p>
-                                <ul className="list-unstyled ms-3">
+                                <p className="card-text"><strong>Links:</strong>
                                     {movie.imdbId && (
-                                        <li>
-                                            <a
-                                                href={`https://www.imdb.com/title/${movie.imdbId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-decoration-none"
-                                            >
-                                                IMDB
-                                            </a>
-                                        </li>
+                                        <a
+                                            href={`https://www.imdb.com/title/${movie.imdbId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-sm btn-outline-primary me-2"
+                                        >
+                                            IMDB
+                                        </a>
                                     )}
                                     {movie.tmdbId && (
-                                        <li>
-                                            <a
-                                                href={`https://www.themoviedb.org/movie/${movie.tmdbId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-decoration-none"
-                                            >
-                                                TMDB
-                                            </a>
-                                        </li>
+                                        <a
+                                            href={`https://www.themoviedb.org/movie/${movie.tmdbId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="btn btn-sm btn-outline-primary"
+                                        >
+                                            TMDB
+                                        </a>
                                     )}
-                                </ul>
+                                </p>
                                 <p className="card-text">
                                     <strong>Tags:</strong>{' '}
                                     {movie.tags && movie.tags.length > 0 ? (
@@ -233,7 +256,7 @@ export default function MovieRecommendations() {
                                                 key={i}
                                                 onClick={() => handleTagClick(t)}
                                                 className="badge bg-success me-1"
-                                                style={{ cursor: 'pointer' }}
+                                                style={{cursor: 'pointer'}}
                                             >
                         {t}
                       </span>
@@ -248,30 +271,22 @@ export default function MovieRecommendations() {
                 ))}
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-                <nav className="mt-4">
-                    <ul className="pagination justify-content-center">
-                        <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
-                            <button className="page-link" onClick={() => handlePageChange(page - 1)}>
-                                Previous
-                            </button>
-                        </li>
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                            <li key={p} className={`page-item ${p === page ? 'active' : ''}`}>
-                                <button className="page-link" onClick={() => handlePageChange(p)}>
-                                    {p}
-                                </button>
-                            </li>
-                        ))}
-                        <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
-                            <button className="page-link" onClick={() => handlePageChange(page + 1)}>
-                                Next
-                            </button>
-                        </li>
-                    </ul>
-                </nav>
-            )}
+            <nav className="d-flex justify-content-center mt-4">
+                <button
+                    className="btn btn-outline-primary me-2"
+                    onClick={handlePrev}
+                    disabled={page === 1}
+                >
+                    ← Prev
+                </button>
+                <button
+                    className="btn btn-outline-primary"
+                    onClick={handleNext}
+                    disabled={!hasNext}
+                >
+                    Next →
+                </button>
+            </nav>
         </div>
     );
 }
